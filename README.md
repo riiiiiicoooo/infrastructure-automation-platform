@@ -110,7 +110,7 @@ Real-time dashboards tracking infrastructure health, deployment velocity, cost e
 | **Time-series** | TimescaleDB | Hypertable compression for high-cardinality infrastructure metrics. Continuous aggregates for anomaly baseline computation without query-time overhead. |
 | **Compliance** | Open Policy Agent (OPA) | Rego policy language decouples compliance rules from application logic. Policies version-controlled in Git alongside infrastructure code. |
 | **API** | FastAPI | Async Python for high-throughput API layer. Auto-generated OpenAPI docs. Native Pydantic validation for request/response schemas. |
-| **Queue** | RabbitMQ | Reliable message delivery for async provisioning jobs and alert ingestion. Dead-letter queues for failed operations requiring manual review. |
+| **Cache/Queue** | Redis 7 | Rate limiting with sliding window counters, metrics buffering, job queue for async operations. Already in stack for caching, minimal operational overhead. |
 
 ---
 
@@ -125,7 +125,7 @@ Decisions that shaped the product, with the reasoning behind each:
 | **Simulation architecture** | Containerized digital twin | Separate staging environment | A full staging environment costs 60-80% of production and drifts constantly. Containerized twins spin up on demand, run identical workloads against synthetic data, and tear down after validation. Cost: ~$200/simulation run vs ~$45K/month for persistent staging. |
 | **Incident ML model** | Random forest + NLP | Deep learning, rule-based | Deep learning requires GPU infrastructure and more training data than we had at launch. Pure rule-based can't handle novel incident patterns. Random forest trains on structured alert metadata (source, severity, timing, affected systems), NLP classifies free-text descriptions. Ensemble achieves 92% accuracy with model retraining monthly on resolved incidents. |
 | **Compliance engine** | OPA (Rego policies) | Hardcoded rules, commercial GRC | Hardcoded rules require code changes for every policy update, which is unacceptable when NIST frameworks evolve. Commercial GRC tools (ServiceNow GRC, Archer) are expensive and designed for manual audit workflows, not automated enforcement. OPA policies are version-controlled, testable, and evaluate in <10ms. |
-| **Progressive rollout** | Automated with manual gates | Fully automated, fully manual | Fully automated rollout for infrastructure changes is too risky. A 2% error rate across 500 servers is 10 misconfigured systems. Fully manual is too slow. Automated expansion with mandatory human approval at 10% and 50% thresholds balances speed and safety. |
+| **Progressive rollout** | Automated with manual gate | Fully automated, fully manual | Fully automated rollout for infrastructure changes is too risky. A 2% error rate across 500 servers is 10 misconfigured systems. Fully manual is too slow. Automated expansion at 1% and 10% with mandatory human approval at the 50% threshold balances speed and safety. |
 
 ---
 
@@ -188,6 +188,7 @@ infrastructure-automation-platform/
 │
 ├── src/
 │   ├── provisioning/
+│   │   ├── workflow.py               # Temporal provisioning workflow (7-step orchestration)
 │   │   ├── policy_engine.py           # OPA integration for compliance validation
 │   │   ├── template_generator.py      # Dynamic Terraform/Ansible template generation
 │   │   └── resource_registry.py       # CMDB registration and lifecycle tracking
@@ -205,9 +206,6 @@ infrastructure-automation-platform/
 │   └── observability/
 │       ├── anomaly_detector.py        # Time-series anomaly detection with adaptive baselines
 │       └── compliance_scanner.py      # Continuous policy validation and drift detection
-│
-└── tests/
-    └── test_policy_engine.py          # Unit tests demonstrating validation logic
 ```
 
 ---
@@ -218,6 +216,7 @@ infrastructure-automation-platform/
 
 | File | What It Demonstrates |
 |------|---------------------|
+| `provisioning/workflow.py` | Temporal durable workflow orchestrating the full provisioning lifecycle: policy validation, approval signals, Vault dynamic credentials, Terraform apply, Ansible hardening, CMDB registration, compliance scan |
 | `provisioning/policy_engine.py` | OPA policy evaluation, NIST 800-53 control mapping, budget/quota enforcement, approval workflow triggers |
 | `provisioning/template_generator.py` | Dynamic Terraform HCL generation from request parameters, security group injection, tagging standards |
 | `provisioning/resource_registry.py` | CMDB registration, resource lifecycle state machine (requested → provisioning → active → decommissioning), dependency tracking |
@@ -236,7 +235,7 @@ infrastructure-automation-platform/
 
 As PM, I wrote these to:
 
-1. **Validate the orchestration approach** by testing Temporal workflow patterns for long-running provisioning jobs before committing architecture. Discovered that Airflow's DAG model couldn't handle the dynamic branching our approval workflows required.
+1. **Validate the orchestration approach** by building the Temporal workflow prototype to test durable execution patterns, approval signal handling, and Vault credential lifecycle for long-running provisioning jobs. Discovered that Airflow's DAG model couldn't handle the dynamic branching our approval workflows required.
 2. **Prove ML feasibility for incident response** by building the alert correlator and classifier to demonstrate that random forest + NLP could achieve >90% accuracy on our alert data, justifying the investment over a rules-only approach.
 3. **Benchmark simulation cost.** Containerized digital twin prototype showed $200/run vs. $45K/month for persistent staging, which became the key data point in the business case.
 4. **Demo progressive rollout to leadership** by running the canary deployment prototype against simulated infrastructure to show automated rollback in action. This converted skeptical ops leads who were resistant to automated deployments.
