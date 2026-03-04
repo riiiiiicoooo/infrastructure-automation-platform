@@ -1,0 +1,677 @@
+{
+  "name": "Provisioning Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "provisioning/webhook",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook_provision",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://opa-server:8181/v1/data/provisioning/evaluate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "input",
+              "value": "{\"request\": {{ JSON.stringify($node.webhook_provision.json) }}, \"requester_id\": \"{{ $node.webhook_provision.json.requester_id }}\", \"budget\": {{ $node.webhook_provision.json.estimated_cost }}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "policy_evaluation",
+      "name": "OPA Policy Evaluation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [300, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            [
+              {
+                "value1": "={{ $node.policy_evaluation.json.result.approved }}",
+                "value2": true
+              }
+            ]
+          ]
+        }
+      },
+      "id": "check_policy_approved",
+      "name": "Policy Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.supabase.io/rest/v1/provisioning_requests",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "environment_id",
+              "value": "={{ $node.webhook_provision.json.environment_id }}"
+            },
+            {
+              "name": "status",
+              "value": "approved"
+            },
+            {
+              "name": "policy_check_passed",
+              "value": true
+            }
+          ]
+        }
+      },
+      "id": "update_request_approved",
+      "name": "Update Request Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trigger.dev/runs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.TRIGGER_DEV_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "jobId",
+              "value": "terraform_apply"
+            },
+            {
+              "name": "payload",
+              "value": "{\"request_id\": \"={{ $node.webhook_provision.json.id }}\", \"environment_id\": \"={{ $node.webhook_provision.json.environment_id }}\", \"terraform_config\": {{ JSON.stringify($node.webhook_provision.json.infrastructure_spec) }}, \"requester_id\": \"={{ $node.webhook_provision.json.requester_id }}\"}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "trigger_terraform",
+      "name": "Trigger Terraform Apply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trigger.dev/runs/{{ $node.trigger_terraform.json.id }}/wait",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.TRIGGER_DEV_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 1800000
+        }
+      },
+      "id": "wait_terraform",
+      "name": "Wait for Terraform",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1100, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            [
+              {
+                "value1": "={{ $node.wait_terraform.json.status }}",
+                "value2": "SUCCESS"
+              }
+            ]
+          ]
+        }
+      },
+      "id": "terraform_success",
+      "name": "Terraform Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://simulation:8000/validate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "environment_id",
+              "value": "={{ $node.webhook_provision.json.environment_id }}"
+            },
+            {
+              "name": "terraform_state",
+              "value": "={{ $node.wait_terraform.json.terraform_state }}"
+            },
+            {
+              "name": "validation_type",
+              "value": "digital_twin"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "run_simulation",
+      "name": "Digital Twin Validation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1500, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            [
+              {
+                "value1": "={{ $node.run_simulation.json.validation_passed }}",
+                "value2": true
+              }
+            ]
+          ]
+        }
+      },
+      "id": "validation_passed",
+      "name": "Validation Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1700, 200]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.supabase.io/rest/v1/environments/{{ $node.webhook_provision.json.environment_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "provisioned_at",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "id": "mark_active",
+      "name": "Mark Environment Active",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1900, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.supabase.io/rest/v1/environments/{{ $node.webhook_provision.json.environment_id }}/send-notification",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.SUPABASE_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "provisioning_complete"
+            },
+            {
+              "name": "recipient_id",
+              "value": "={{ $node.webhook_provision.json.requester_id }}"
+            },
+            {
+              "name": "context",
+              "value": "{\"environment_id\": \"{{ $node.webhook_provision.json.environment_id }}\", \"resources\": {{ JSON.stringify($node.wait_terraform.json.created_resources) }}, \"access_urls\": {{ JSON.stringify($node.wait_terraform.json.access_urls) }}, \"monthly_cost\": {{ $node.webhook_provision.json.estimated_cost }}}"
+            }
+          ]
+        }
+      },
+      "id": "notify_developer",
+      "name": "Notify Developer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2100, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trigger.dev/runs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.TRIGGER_DEV_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "jobId",
+              "value": "terraform_rollback"
+            },
+            {
+              "name": "payload",
+              "value": "{\"request_id\": \"{{ $node.webhook_provision.json.id }}\", \"terraform_state\": {{ JSON.stringify($node.wait_terraform.json.terraform_state) }}, \"reason\": \"{{ $node.run_simulation.json.validation_failures.join(', ') }}\"}"
+            }
+          ]
+        }
+      },
+      "id": "trigger_rollback",
+      "name": "Trigger Rollback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1900, 350]
+    },
+    {
+      "parameters": {
+        "channel": "#infrastructure",
+        "text": ":exclamation: Provisioning failed - Rollback initiated",
+        "attachments": [
+          {
+            "color": "#ff0000",
+            "title": "Provisioning Failure",
+            "text": "Environment {{ $node.webhook_provision.json.environment_id }} failed validation",
+            "fields": [
+              {
+                "title": "Validation Failures",
+                "value": "{{ $node.run_simulation.json.validation_failures.join('\\n') }}",
+                "short": false
+              },
+              {
+                "title": "Requester",
+                "value": "{{ $node.webhook_provision.json.requester_id }}",
+                "short": true
+              }
+            ]
+          }
+        ]
+      },
+      "id": "slack_alert_failed",
+      "name": "Alert Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [2100, 350]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.supabase.io/rest/v1/provisioning_requests/{{ $node.webhook_provision.json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "rolled_back"
+            },
+            {
+              "name": "execution_error",
+              "value": "{{ $node.run_simulation.json.validation_failures.join('; ') }}"
+            }
+          ]
+        }
+      },
+      "id": "update_request_rolled_back",
+      "name": "Update Request Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2100, 280]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.supabase.io/rest/v1/provisioning_requests/{{ $node.webhook_provision.json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "rejected"
+            },
+            {
+              "name": "execution_error",
+              "value": "{{ $node.policy_evaluation.json.result.reason }}"
+            }
+          ]
+        }
+      },
+      "id": "update_request_rejected",
+      "name": "Update Request Rejected",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 450]
+    },
+    {
+      "parameters": {
+        "channel": "#infrastructure",
+        "text": ":x: Provisioning request rejected by policy",
+        "attachments": [
+          {
+            "color": "#ff6600",
+            "title": "Policy Rejection",
+            "text": "{{ $node.policy_evaluation.json.result.reason }}",
+            "fields": [
+              {
+                "title": "Violations",
+                "value": "{{ $node.policy_evaluation.json.result.violations.join(', ') }}",
+                "short": false
+              },
+              {
+                "title": "Requester",
+                "value": "{{ $node.webhook_provision.json.requester_id }}",
+                "short": true
+              }
+            ]
+          }
+        ]
+      },
+      "id": "slack_policy_rejection",
+      "name": "Alert Policy Rejection",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [900, 450]
+    }
+  ],
+  "connections": {
+    "webhook_provision": {
+      "main": [
+        [
+          {
+            "node": "policy_evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "policy_evaluation": {
+      "main": [
+        [
+          {
+            "node": "check_policy_approved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check_policy_approved": {
+      "main": [
+        [
+          {
+            "node": "update_request_approved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "update_request_rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "update_request_approved": {
+      "main": [
+        [
+          {
+            "node": "trigger_terraform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "trigger_terraform": {
+      "main": [
+        [
+          {
+            "node": "wait_terraform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "wait_terraform": {
+      "main": [
+        [
+          {
+            "node": "terraform_success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "terraform_success": {
+      "main": [
+        [
+          {
+            "node": "run_simulation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "trigger_rollback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run_simulation": {
+      "main": [
+        [
+          {
+            "node": "validation_passed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validation_passed": {
+      "main": [
+        [
+          {
+            "node": "mark_active",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "trigger_rollback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mark_active": {
+      "main": [
+        [
+          {
+            "node": "notify_developer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "trigger_rollback": {
+      "main": [
+        [
+          {
+            "node": "update_request_rolled_back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "update_request_rolled_back": {
+      "main": [
+        [
+          {
+            "node": "slack_alert_failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "update_request_rejected": {
+      "main": [
+        [
+          {
+            "node": "slack_policy_rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "errorWorkflow": "",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "staticData": null,
+  "id": "provisioning_pipeline",
+  "hash": "provisioning_v1",
+  "tags": [
+    "provisioning",
+    "terraform",
+    "policy",
+    "simulation"
+  ]
+}

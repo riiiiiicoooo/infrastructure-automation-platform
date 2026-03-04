@@ -1,0 +1,278 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "iap-simulation-results",
+    "title": "Simulation & Testing Results",
+    "description": "Digital twin simulation pass/fail rates, pre-production issue detection, and deployment KPIs",
+    "tags": ["simulation", "testing", "deployment", "quality"],
+    "timezone": "utc",
+    "schemaVersion": 30,
+    "version": 0,
+    "refresh": "1m",
+    "time": {
+      "from": "now-30d",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Digital Twin Pass Rate (%)",
+        "type": "gauge",
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "(sum(simulation_passed) / sum(simulation_total)) * 100"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 80},
+                {"color": "green", "value": 95}
+              ]
+            },
+            "unit": "percent"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Pre-Production Issues Caught",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(issues_caught_in_simulation)"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "fixed", "fixedColor": "green"}
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Issues that Would Have Reached Production",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(issues_prevented_from_prod)"
+          }
+        ],
+        "options": {
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "fixed", "fixedColor": "red"}
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Simulation Run Cost Estimate ($)",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+        "targets": [
+          {
+            "expr": "avg(simulation_cost_per_run)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD"
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Test Suite Execution Time (minutes)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "avg by (test_suite) (simulation_duration_minutes)"
+          }
+        ],
+        "yaxes": [
+          {"label": "Minutes", "format": "short"}
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Pass/Fail by Test Suite",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "sum by (test_suite) (simulation_passed{status='pass'})"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "renameByName": {
+                "test_suite": "Test Suite",
+                "simulation_passed": "Passed"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Issues by Category",
+        "type": "piechart",
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "sum by (issue_category) (issues_detected)"
+          }
+        ],
+        "options": {
+          "displayLabels": ["name", "value"]
+        }
+      },
+      {
+        "id": 8,
+        "title": "Deployment Success Rate After Simulation (%)",
+        "type": "gauge",
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16},
+        "targets": [
+          {
+            "expr": "(sum(deployments_successful{after_simulation='yes'}) / sum(deployments_total{after_simulation='yes'})) * 100"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 95},
+                {"color": "green", "value": 99}
+              ]
+            },
+            "unit": "percent"
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "Production Incidents from Simulated Deployments",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16},
+        "targets": [
+          {
+            "expr": "sum(prod_incidents{deployment_was_simulated='yes'})"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "fixed", "fixedColor": "green"}
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Rollout KPIs - Canary Deployment Success",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "avg by (canary_stage) (rollout_success_rate) * 100",
+            "legendFormat": "{{canary_stage}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "Success Rate (%)", "format": "percent"}
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "Auto-Rollback Triggers (Last 30 Days)",
+        "type": "bargauge",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "targets": [
+          {
+            "expr": "sum by (rollback_reason) (rollbacks_triggered)"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal"
+        }
+      },
+      {
+        "id": 12,
+        "title": "Deployment Velocity (Deployments/Week)",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 8, "x": 0, "y": 32},
+        "targets": [
+          {
+            "expr": "sum(increase(deployments_total[7d]))"
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Change Failure Rate (%)",
+        "type": "gauge",
+        "gridPos": {"h": 6, "w": 8, "x": 8, "y": 32},
+        "targets": [
+          {
+            "expr": "(sum(failed_deployments) / sum(total_deployments)) * 100"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 5},
+                {"color": "red", "value": 15}
+              ]
+            },
+            "unit": "percent"
+          }
+        }
+      },
+      {
+        "id": 14,
+        "title": "Cost Impact: Testing Prevented Outages",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 8, "x": 16, "y": 32},
+        "targets": [
+          {
+            "expr": "sum(issues_caught_in_simulation) * 50000"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD"
+          }
+        }
+      }
+    ]
+  }
+}

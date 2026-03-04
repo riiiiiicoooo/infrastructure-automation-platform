@@ -1,0 +1,468 @@
+{
+  "name": "Incident Response Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incidents/webhook",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook_trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://ml-classifier:8000/classify",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "alert_message",
+              "value": "={{ $node.webhook_trigger.json.message }}"
+            },
+            {
+              "name": "alert_source",
+              "value": "={{ $node.webhook_trigger.json.source }}"
+            },
+            {
+              "name": "metric_name",
+              "value": "={{ $node.webhook_trigger.json.metric }}"
+            },
+            {
+              "name": "affected_services",
+              "value": "={{ $node.webhook_trigger.json.services }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "classify_incident",
+      "name": "ML Classify Incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [300, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            [
+              {
+                "value1": "={{ $node.classify_incident.json.is_auto_remediable }}",
+                "value2": true
+              }
+            ]
+          ]
+        }
+      },
+      "id": "check_auto_remediable",
+      "name": "Is Auto-Remediable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trigger.dev/runs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.TRIGGER_DEV_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "jobId",
+              "value": "incident_remediation"
+            },
+            {
+              "name": "payload",
+              "value": "{\"incident_id\": \"={{ $node.webhook_trigger.json.incident_id }}\", \"runbook_id\": \"={{ $node.classify_incident.json.runbook_id }}\", \"incident_type\": \"={{ $node.classify_incident.json.incident_type }}\", \"severity\": \"={{ $node.classify_incident.json.severity }}\"}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "trigger_runbook",
+      "name": "Trigger Remediation Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 150]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trigger.dev/runs/{{ $node.trigger_runbook.json.id }}/wait",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.TRIGGER_DEV_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "wait_remediation",
+      "name": "Wait for Remediation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 150]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            [
+              {
+                "value1": "={{ $node.wait_remediation.json.status }}",
+                "value2": "SUCCESS"
+              }
+            ]
+          ]
+        }
+      },
+      "id": "remediation_successful",
+      "name": "Remediation Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1100, 150]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.supabase.io/rest/v1/incidents/{{ $node.webhook_trigger.json.incident_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "resolved"
+            },
+            {
+              "name": "resolved_at",
+              "value": "={{ new Date().toISOString() }}"
+            },
+            {
+              "name": "resolution_notes",
+              "value": "Auto-remediation successful. Steps: {{ $node.wait_remediation.json.steps_executed }}"
+            }
+          ]
+        }
+      },
+      "id": "close_incident",
+      "name": "Close Incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1300, 50]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.pagerduty.com/incidents/{{ $node.webhook_trigger.json.incident_id }}/escalations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Token token={{ $env.PAGERDUTY_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "escalation_policy",
+              "value": "={{ $node.classify_incident.json.escalation_policy }}"
+            }
+          ]
+        }
+      },
+      "id": "route_to_oncall",
+      "name": "Route to On-Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 450]
+    },
+    {
+      "parameters": {
+        "resource": "issue",
+        "operation": "create",
+        "summary": "{{ $node.classify_incident.json.incident_type }} - {{ $node.webhook_trigger.json.message }}",
+        "description": "**Severity:** {{ $node.classify_incident.json.severity }}\n\n**Affected Services:** {{ $node.webhook_trigger.json.services.join(', ') }}\n\n**Classification:** {{ $node.classify_incident.json.incident_type }}\n\n**Alert Source:** {{ $node.webhook_trigger.json.source }}\n\n**Metric:** {{ $node.webhook_trigger.json.metric }}\n\n[View in Dashboard](https://grafana.example.com/d/incident-{{ $node.webhook_trigger.json.incident_id }})",
+        "teamId": "{{ $env.LINEAR_TEAM_ID }}"
+      },
+      "id": "create_linear_ticket",
+      "name": "Create Linear Ticket",
+      "type": "n8n-nodes-base.linear",
+      "typeVersion": 2,
+      "position": [900, 450]
+    },
+    {
+      "parameters": {
+        "channel": "#incidents",
+        "text": ":warning: Incident escalated - No auto-remediation available",
+        "attachments": [
+          {
+            "color": "{{ $node.classify_incident.json.severity === 'critical' ? '#ff0000' : $node.classify_incident.json.severity === 'high' ? '#ff9900' : '#ffcc00' }}",
+            "title": "{{ $node.classify_incident.json.incident_type | capitalize }} - {{ $node.classify_incident.json.severity | capitalize }}",
+            "text": "{{ $node.webhook_trigger.json.message }}",
+            "fields": [
+              {
+                "title": "Affected Services",
+                "value": "{{ $node.webhook_trigger.json.services.join(', ') }}",
+                "short": true
+              },
+              {
+                "title": "Classification Confidence",
+                "value": "{{ ($node.classify_incident.json.confidence_score * 100).toFixed(0) }}%",
+                "short": true
+              },
+              {
+                "title": "On-Call Assigned",
+                "value": "{{ $node.route_to_oncall.json.assigned_user }}",
+                "short": true
+              },
+              {
+                "title": "Linear Ticket",
+                "value": "<{{ $node.create_linear_ticket.json.url }}|{{ $node.create_linear_ticket.json.id }}>",
+                "short": true
+              }
+            ],
+            "actions": [
+              {
+                "type": "button",
+                "text": "View Incident",
+                "url": "https://grafana.example.com/d/incident-{{ $node.webhook_trigger.json.incident_id }}"
+              }
+            ]
+          }
+        ]
+      },
+      "id": "slack_alert",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1100, 450]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.supabase.io/rest/v1/incidents/{{ $node.webhook_trigger.json.incident_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "escalated"
+            },
+            {
+              "name": "assigned_to",
+              "value": "={{ $node.route_to_oncall.json.assigned_user_id }}"
+            },
+            {
+              "name": "resolution_notes",
+              "value": "Escalated to on-call engineer. Linear ticket: {{ $node.create_linear_ticket.json.id }}"
+            }
+          ]
+        }
+      },
+      "id": "update_incident_escalated",
+      "name": "Update Incident Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1300, 450]
+    }
+  ],
+  "connections": {
+    "webhook_trigger": {
+      "main": [
+        [
+          {
+            "node": "classify_incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "classify_incident": {
+      "main": [
+        [
+          {
+            "node": "check_auto_remediable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check_auto_remediable": {
+      "main": [
+        [
+          {
+            "node": "trigger_runbook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "route_to_oncall",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "trigger_runbook": {
+      "main": [
+        [
+          {
+            "node": "wait_remediation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "wait_remediation": {
+      "main": [
+        [
+          {
+            "node": "remediation_successful",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "remediation_successful": {
+      "main": [
+        [
+          {
+            "node": "close_incident",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "route_to_oncall",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route_to_oncall": {
+      "main": [
+        [
+          {
+            "node": "create_linear_ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_linear_ticket": {
+      "main": [
+        [
+          {
+            "node": "slack_alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "slack_alert": {
+      "main": [
+        [
+          {
+            "node": "update_incident_escalated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "errorWorkflow": "",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "staticData": null,
+  "id": "incident_response_workflow",
+  "hash": "incident_response_v1",
+  "tags": [
+    "incident-response",
+    "auto-remediation",
+    "escalation"
+  ]
+}

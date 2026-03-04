@@ -1,0 +1,16 @@
+run = "make dev"
+entrypoint = "src/api/main.py"
+
+modules = ["python310", "nodejs-20", "docker"]
+
+[nix]
+channel = "stable-23_11"
+
+[debugger]
+support = true
+
+[unitTest]
+language = "python"
+
+[deployment]
+run = ["sh", "-c", "make build && make start"]

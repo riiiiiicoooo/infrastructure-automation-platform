@@ -114,6 +114,56 @@ Real-time dashboards tracking infrastructure health, deployment velocity, cost e
 
 ---
 
+## Modern Stack & Tooling Infrastructure
+
+This project includes production-ready tooling infrastructure for enterprise deployments:
+
+### Workflow Orchestration & Automation
+
+- **n8n** - Visual workflow automation for provisioning pipelines (policy validation → Terraform → simulation → notifications) and incident response workflows (alert classification → auto-remediation → escalation)
+- **Trigger.dev** - Long-running job orchestration with checkpointing, resumability, and rollback capabilities for Terraform applies (5-30 min) and incident remediation with human-in-the-loop
+
+### Data & Database
+
+- **Supabase/PostgreSQL** - Complete schema for infrastructure resources, provisioning requests, policy evaluations, incidents, runbooks, simulations, and metrics with Row-Level Security (RLS) for multi-tenant isolation
+- **TimescaleDB** - Time-series metrics storage with continuous aggregates for cost trends, resource utilization, MTTR baselines, and anomaly detection
+
+### Observability & Dashboards
+
+- **Grafana** - Production dashboards tracking provisioning volume, active environments, policy violations, cost trends, MTTR, auto-remediation success rate, and escalation funnel
+- Structured logging with incident IDs and resource tracking for compliance and debugging
+
+### Incident Response & Communication
+
+- **React Email** - Templated email notifications for provisioning completion (resource summary, access URLs, cost, TTL) and incident escalation (severity badge, affected services, suggested runbooks, on-call assignment)
+- **PagerDuty/Linear/Slack** integration for incident routing, ticket creation, and team alerts
+
+### DevOps & Deployment
+
+- **Vercel** - Serverless deployment with environment variables, security headers (HSTS, XSS protection, CSP), and region routing (iad1, sfo1)
+- **.cursorrules** - Cursor IDE context for infrastructure automation patterns
+- **.replit** + **replit.nix** - One-click development environment with Terraform, Ansible, OPA, PostgreSQL, Redis, Node.js, Docker
+
+### Files Reference
+
+| File | Purpose |
+|------|---------|
+| `.cursorrules` | IDE context for infrastructure, Terraform, OPA, ML incident response |
+| `.replit` + `replit.nix` | Dev environment with all tools (Terraform, Ansible, OPA, Python, Node.js, Docker) |
+| `supabase/migrations/001_initial_schema.sql` | Complete database schema: resources, provisioning, policies, incidents, runbooks, simulation, metrics with RLS |
+| `n8n/incident_response.json` | Alert → ML classify → auto-remediate/escalate → Linear ticket → Slack |
+| `n8n/provisioning_pipeline.json` | Request → OPA policy → Terraform apply → digital twin validation → developer notification |
+| `trigger-jobs/terraform_apply.ts` | Long-running Terraform (5-30 min) with checkpoints, health checks, tagging, rollback |
+| `trigger-jobs/incident_remediation.ts` | Auto-remediation with step execution, human-in-the-loop approval for critical incidents |
+| `grafana/dashboards/infrastructure_overview.json` | Provisioning volume, active environments, policy violations, cost trends, resource utilization |
+| `grafana/dashboards/incident_response.json` | MTTR trends, incident classification, auto-remediation success rate, escalation funnel |
+| `emails/provisioning_complete.tsx` | Environment ready notification with resource summary, access URLs, cost, TTL |
+| `emails/incident_escalation.tsx` | Severity badge, affected services, ML confidence, suggested runbook, on-call assignment |
+| `vercel.json` | Deployment config with security headers, environment variables, routes |
+| `.env.example` | Complete environment configuration reference for all integrations |
+
+---
+
 ## Key Product Decisions
 
 Decisions that shaped the product, with the reasoning behind each:

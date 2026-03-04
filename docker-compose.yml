@@ -1,0 +1,152 @@
+# Docker Compose Configuration for Infrastructure Automation Platform
+#
+# Services:
+# - FastAPI backend (port 8000)
+# - TimescaleDB for metrics (port 5432)
+# - Redis for caching (port 6379)
+# - Grafana dashboards (port 3000)
+#
+# Usage:
+#   docker-compose up -d
+#   curl http://localhost:8000/health
+#   Open http://localhost:3000 (Grafana)
+
+version: '3.8'
+
+services:
+  # =========================================================================
+  # FastAPI Backend
+  # =========================================================================
+  backend:
+    image: python:3.11-slim
+    container_name: iap-backend
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@timescaledb:5432/iap
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: INFO
+      ENVIRONMENT: development
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    command: |
+      bash -c "pip install fastapi uvicorn psycopg2-binary redis pydantic 2>/dev/null &&
+               python -c \"from demo.api_server import app; import uvicorn; uvicorn.run(app, host='0.0.0.0', port=8000, reload=False)\""
+    depends_on:
+      - timescaledb
+      - redis
+    networks:
+      - iap_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =========================================================================
+  # TimescaleDB (PostgreSQL + Time-Series)
+  # =========================================================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: iap-timescaledb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: iap
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./demo/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql
+    networks:
+      - iap_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =========================================================================
+  # Redis Cache
+  # =========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: iap-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --appendfsync everysec
+    networks:
+      - iap_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =========================================================================
+  # Grafana Dashboards
+  # =========================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: iap-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: admin
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./dashboards:/etc/grafana/provisioning/dashboards
+      - ./demo/grafana_datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+      - ./demo/grafana_dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
+    depends_on:
+      - timescaledb
+    networks:
+      - iap_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =========================================================================
+  # Simulation Runner (optional, runs once)
+  # =========================================================================
+  simulator:
+    image: python:3.11-slim
+    container_name: iap-simulator
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@timescaledb:5432/iap
+      REDIS_URL: redis://redis:6379
+      BACKEND_URL: http://backend:8000
+    volumes:
+      - .:/app
+    command: |
+      bash -c "
+        echo 'Waiting for backend to be ready...' &&
+        sleep 10 &&
+        pip install fastapi psycopg2-binary redis pydantic requests 2>/dev/null &&
+        python demo/run_simulation.py
+      "
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - iap_network
+    profiles:
+      - simulator
+
+networks:
+  iap_network:
+    driver: bridge
+
+volumes:
+  timescaledb_data:
+  redis_data:
+  grafana_data:

@@ -1,0 +1,159 @@
+{
+  "name": "Infrastructure Automation Platform",
+  "version": 2,
+  "public": false,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "env": [
+    {
+      "key": "DATABASE_URL",
+      "value": "@db_url"
+    },
+    {
+      "key": "SUPABASE_URL",
+      "value": "@supabase_url"
+    },
+    {
+      "key": "SUPABASE_API_KEY",
+      "value": "@supabase_api_key"
+    },
+    {
+      "key": "SUPABASE_SERVICE_ROLE_KEY",
+      "value": "@supabase_service_role_key"
+    },
+    {
+      "key": "TRIGGER_DEV_API_KEY",
+      "value": "@trigger_dev_api_key"
+    },
+    {
+      "key": "N8N_API_KEY",
+      "value": "@n8n_api_key"
+    },
+    {
+      "key": "PAGERDUTY_API_KEY",
+      "value": "@pagerduty_api_key"
+    },
+    {
+      "key": "LINEAR_API_KEY",
+      "value": "@linear_api_key"
+    },
+    {
+      "key": "SLACK_BOT_TOKEN",
+      "value": "@slack_bot_token"
+    },
+    {
+      "key": "SLACK_SIGNING_SECRET",
+      "value": "@slack_signing_secret"
+    },
+    {
+      "key": "GRAFANA_API_KEY",
+      "value": "@grafana_api_key"
+    },
+    {
+      "key": "OPA_URL",
+      "value": "http://opa-server:8181"
+    },
+    {
+      "key": "ML_CLASSIFIER_URL",
+      "value": "http://ml-classifier:8000"
+    },
+    {
+      "key": "SIMULATION_URL",
+      "value": "http://simulation:8000"
+    },
+    {
+      "key": "ENVIRONMENT",
+      "value": "production"
+    },
+    {
+      "key": "NODE_ENV",
+      "value": "production"
+    },
+    {
+      "key": "LOG_LEVEL",
+      "value": "info"
+    }
+  ],
+  "build": {
+    "env": {
+      "PYTHON_VERSION": "3.11"
+    }
+  },
+  "functions": {
+    "src/api/**": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "src/webhooks/**": {
+      "memory": 512,
+      "maxDuration": 30
+    }
+  },
+  "regions": ["iad1", "sfo1"],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/src/api/$1",
+      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    },
+    {
+      "src": "/webhooks/(.*)",
+      "dest": "/src/webhooks/$1",
+      "methods": ["POST"]
+    },
+    {
+      "src": "/static/(.*)",
+      "dest": "/public/static/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "src": "^/(?!api|webhooks|static)(.*)",
+      "dest": "/src/web/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000; includeSubDomains"
+        }
+      ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/docs",
+      "destination": "https://docs.example.com",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/v1/(.*)",
+      "destination": "/api/$1"
+    }
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "framework": "other"
+}

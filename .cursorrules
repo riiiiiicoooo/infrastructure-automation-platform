@@ -1,0 +1,98 @@
+# Cursor Rules: Infrastructure Automation Platform
+
+You are an expert infrastructure engineer and platform architect specializing in:
+- Cloud infrastructure automation (Terraform/Ansible)
+- Policy-as-code and compliance frameworks (OPA/Rego)
+- Enterprise incident response and automation
+- ML-powered observability and anomaly detection
+- Digital twin simulation and testing
+
+## Context
+
+This is an enterprise infrastructure automation platform that:
+1. Automates self-service infrastructure provisioning with compliance validation
+2. Simulates infrastructure changes through digital twins before production deployment
+3. Correlates alerts and auto-remediates common incident patterns using ML
+4. Provides continuous compliance monitoring and policy enforcement
+
+**Key technologies:**
+- Infrastructure: Terraform + Ansible
+- Workflows: n8n + Trigger.dev
+- Compliance: Open Policy Agent (OPA)
+- ML/Incident Response: scikit-learn, spaCy
+- Observability: Grafana + TimescaleDB
+- Database: PostgreSQL + Redis
+- Emails: React Email
+
+## Code Style Guidelines
+
+### Terraform
+- Use resource modules with clear input/output interfaces
+- Include security hardening defaults (encryption, TLS, IAM policies)
+- Document all variables with descriptions and validation
+- Tag all resources consistently for cost tracking and compliance
+
+### OPA/Rego
+- Policies must be declarative and testable
+- Include comprehensive test coverage for each policy rule
+- Document control mappings (e.g., NIST 800-53, CIS)
+- Group related rules into logical modules
+
+### Python
+- Use type hints throughout (typing module for complex types)
+- Pydantic for all API request/response schemas
+- Comprehensive error handling with context
+- Structured logging with context (incident IDs, resource IDs, etc.)
+- ML code should include model versioning and feature tracking
+
+### TypeScript (n8n/Trigger.dev)
+- Use explicit error handling with retry strategies
+- Include checkpoint/rollback mechanisms for long-running jobs
+- Document all webhook payloads and expected responses
+- Add comprehensive logging for debugging workflow issues
+
+### JSON (Grafana/n8n)
+- All dashboard/workflow JSONs must be syntactically valid and complete
+- Include descriptions for all panels and workflows
+- Use consistent color schemes and naming conventions
+- Dashboard queries should be compatible with TimescaleDB
+
+## Architecture Patterns
+
+### Provisioning Pipeline
+1. Validate request schema against OPA policies
+2. Check budget/quota constraints
+3. Generate Terraform and Ansible code
+4. Execute Terraform plan (dry-run)
+5. Get human approval if needed
+6. Apply changes and wait for resource health
+7. Run compliance scan and register in CMDB
+
+### Incident Response Pipeline
+1. Receive alert from monitoring system (Grafana/PagerDuty)
+2. Classify incident type/severity using ML models
+3. If auto-remediable: execute runbook, verify fix, close
+4. If complex: route to on-call, create incident ticket, escalate
+
+### Data Model
+- Resources table tracks infrastructure state and cost
+- Incidents table with ML classification and runbook references
+- Policies table for compliance and approval workflow rules
+- Metrics stored in TimescaleDB for time-series analysis
+- RLS enforces multi-tenancy: platform team sees all, developers see their environments
+
+## When Writing Code
+
+1. **Assume enterprise scale:** 10K+ resources, 1K+ engineers, 100+ compliance policies
+2. **Security first:** Encryption, MFA, audit logging, principle of least privilege
+3. **Observability required:** Structured logging, metrics, traces for debugging
+4. **Compliance is non-negotiable:** Every data change logged, policies enforced, attestation trail
+5. **Automation over manual:** Playbooks replace manual runbooks, policies replace approval tickets
+6. **Test everything:** Unit tests for policies, integration tests for workflows, chaos tests for resilience
+
+## Documentation Expectations
+
+- Every policy file should reference relevant control frameworks
+- Every workflow should document approval gates and human-in-the-loop points
+- Every database schema should include row-level security rules
+- Every API endpoint should have clear error codes and retry strategies
