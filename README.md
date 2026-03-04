@@ -164,6 +164,35 @@ This project includes production-ready tooling infrastructure for enterprise dep
 
 ---
 
+## Engagement & Budget
+
+### Team & Timeline
+
+| Role | Allocation | Duration |
+|------|-----------|----------|
+| Lead PM (Jacob) | 20 hrs/week | 18 weeks |
+| Lead Developer (US) | 40 hrs/week | 18 weeks |
+| Offshore Developer(s) | 2 × 35 hrs/week | 18 weeks |
+| QA Engineer | 20 hrs/week | 18 weeks |
+
+**Timeline:** 18 weeks total across 3 phases
+- **Phase 1: Discovery & Design** (3 weeks) — Infrastructure audit, compliance policy mapping, environment catalog, simulation model design
+- **Phase 2: Core Build** (10 weeks) — IaC provisioning engine, policy enforcement (OPA), digital twin simulation, ML incident detection, automated remediation playbooks
+- **Phase 3: Integration & Launch** (5 weeks) — Datadog/Grafana integration, deployment pipeline testing, runbook documentation, ops team training, staged rollout by environment tier
+
+### Budget Summary
+
+| Category | Cost | Notes |
+|----------|------|-------|
+| PM & Strategy | $66,600 | Discovery, specs, stakeholder management |
+| Development (Lead + Offshore) | $179,280 | Core platform build |
+| AI/LLM Token Budget | $7,560/month | Claude Haiku for incident classification/response ~5M tokens/month |
+| Infrastructure | $17,640/month | Temporal Cloud, AWS, TimescaleDB, Redis, Datadog, Grafana, Terraform Cloud, misc |
+| **Total Engagement** | **$260,000** | Fixed-price, phases billed at milestones |
+| **Ongoing Run Rate** | **$1,600/month** | Infrastructure + AI tokens + 4hrs support |
+
+---
+
 ## Key Product Decisions
 
 Decisions that shaped the product, with the reasoning behind each:
