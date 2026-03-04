@@ -1,0 +1,131 @@
+# OpenTelemetry Collector Configuration
+# Infrastructure Automation Platform - Traces, Metrics, and Logs
+# Observes terraform operations, policy evaluations, incident classification
+# Exports to Grafana Cloud and Prometheus
+
+receivers:
+  # OTLP gRPC receiver (default on 4317)
+  # Used by Python auto-instrumentation and custom spans
+  otlp/grpc:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        max_recv_msg_size_mb: 100
+
+  # OTLP HTTP receiver (default on 4318)
+  # Alternative transport for clients that prefer HTTP
+  otlp/http:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Prometheus scrape receiver
+  # Scrapes self-instrumented metrics from application endpoints
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'infrastructure-automation'
+          scrape_interval: 30s
+          static_configs:
+            - targets: ['localhost:8000']  # Application metrics endpoint
+
+processors:
+  # Memory limiter to prevent OOM during spike in telemetry
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  # Batch processor for efficient export
+  # Batches telemetry before sending to reduce overhead
+  batch:
+    send_batch_size: 100
+    timeout: 30s
+    send_batch_max_size: 1000
+
+  # Add resource attributes to all telemetry
+  # Identifies the service and environment context
+  resource/infrastructure:
+    attributes:
+      add:
+        service.name: "infrastructure-automation-platform"
+        service.namespace: "portfolio-ops"
+        service.version: "1.0.0"
+        environment: "production"
+        deployment.environment: "prod"
+
+  # Attributes processor for trace context enrichment
+  # Extracts operation type from span attributes for correlation
+  attributes/operation:
+    actions:
+      - key: operation.category
+        pattern: ^(terraform|policy|incident)_.*
+        action: extract
+        regex: (?P<operation_type>\w+)_
+
+exporters:
+  # OTLP exporter to Grafana Cloud
+  # Sends traces and metrics to Grafana Cloud for visualization
+  otlp/grafana:
+    endpoint: "tempo-blocks-prod-us-central-1.grafana.net:443"
+    headers:
+      Authorization: "Bearer ${GRAFANA_OTLP_TOKEN}"
+    compression: gzip
+    timeout: 30s
+
+  # Prometheus Remote Write exporter
+  # Stores metrics in Prometheus or Grafana Cloud
+  prometheusremotewrite/grafana:
+    endpoint: "https://prometheus-blocks-prod-us-central-1.grafana.net/api/prom/push"
+    headers:
+      Authorization: "Bearer ${GRAFANA_PROMETHEUS_TOKEN}"
+    resource_to_telemetry_conversion:
+      enabled: true
+    compression: snappy
+
+  # Jaeger exporter (optional, for distributed tracing UI)
+  # Uncomment to export traces to Jaeger backend
+  # jaeger/local:
+  #   endpoint: "localhost:14250"
+  #   compression: gzip
+
+  # Console exporter for development/debugging
+  # Logs telemetry to stdout
+  logging:
+    loglevel: debug
+    sampling_initial: 10
+    sampling_thereafter: 100
+
+extensions:
+  # Health check extension
+  health_check:
+    endpoint: ":13133"
+
+  # Performance profiler for debugging
+  pprof:
+    endpoint: ":1777"
+
+service:
+  # Telemetry pipeline for traces
+  # Processes: memory limiting → batching → resource attributes → export
+  pipelines:
+    traces:
+      receivers: [otlp/grpc, otlp/http]
+      processors: [memory_limiter, batch, resource/infrastructure, attributes/operation]
+      exporters: [otlp/grafana, logging]
+
+  # Telemetry pipeline for metrics
+  # Combines application metrics (OTLP) with Prometheus scrapes
+  metrics:
+    receivers: [otlp/grpc, otlp/http, prometheus]
+    processors: [memory_limiter, batch, resource/infrastructure]
+    exporters: [prometheusremotewrite/grafana, logging]
+
+  # Optional: Logs pipeline
+  # Uncomment to forward application logs
+  # logs:
+  #   receivers: [otlp/grpc, otlp/http]
+  #   processors: [memory_limiter, batch, resource/infrastructure]
+  #   exporters: [otlp/grafana, logging]
+
+  extensions: [health_check, pprof]

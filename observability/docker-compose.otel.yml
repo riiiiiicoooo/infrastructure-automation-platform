@@ -1,0 +1,116 @@
+# Docker Compose overlay for observability stack
+# Adds: OpenTelemetry Collector, Jaeger UI, Prometheus
+# Intended to be used with: docker-compose -f docker-compose.yml -f docker-compose.otel.yml up
+
+version: '3.8'
+
+services:
+  # OpenTelemetry Collector
+  # Central hub for receiving, processing, and exporting telemetry
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: infrastructure-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./observability/otel_config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      # OTLP receivers
+      - "4317:4317"  # OTLP gRPC
+      - "4318:4318"  # OTLP HTTP
+      # Jaeger receivers (if enabled in config)
+      - "14250:14250"  # Jaeger gRPC
+      # Prometheus
+      - "8888:8888"  # Prometheus metrics
+      - "8889:8889"  # Prometheus metrics exposition port
+      # Health check
+      - "13133:13133"
+      # pprof
+      - "1777:1777"
+    environment:
+      # Grafana Cloud credentials - set these
+      GRAFANA_OTLP_TOKEN: ${GRAFANA_OTLP_TOKEN:-}
+      GRAFANA_PROMETHEUS_TOKEN: ${GRAFANA_PROMETHEUS_TOKEN:-}
+    networks:
+      - infrastructure-net
+    depends_on:
+      - infrastructure-api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:13133/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Jaeger UI for distributed tracing visualization
+  # Requires OpenTelemetry Collector to export traces (jaeger/local exporter)
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: infrastructure-jaeger
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # Jaeger HTTP receiver (if enabled)
+    environment:
+      # Memory storage for dev/testing (not recommended for production)
+      MEMORY_MAX_TRACES: "10000"
+      QUERY_BASE_PATH: "/"
+    networks:
+      - infrastructure-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:16686/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus for metrics collection and querying
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: infrastructure-prometheus
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    networks:
+      - infrastructure-net
+    depends_on:
+      - otel-collector
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana for unified visualization (optional but recommended)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: infrastructure-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+      - ./observability/grafana-dashboards:/etc/grafana/provisioning/dashboards
+    networks:
+      - infrastructure-net
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  infrastructure-net:
+    driver: bridge
