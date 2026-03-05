@@ -316,3 +316,23 @@ Remediation playbooks define what the incident response system does automaticall
 - Database playbooks table has a `git_sha` column linking each record to the source commit
 - If sync fails, the previous version remains in the database (safe default)
 - Playbook execution logs reference both playbook ID and git_sha for full traceability
+
+---
+
+## DEC-010: Tiered Approval Gates Over Full Self-Service Provisioning
+
+**Date:** February 2025
+**Status:** Accepted (supersedes earlier approach)
+**Decider:** Jacob George (PM), Security/Compliance Officer, Engineering Lead
+
+**Context:** The original vision was full self-service — any engineer could provision any environment type through the platform without approval. This was the key selling point to engineering leadership: "No more waiting 3-4 days for infrastructure."
+
+**What Happened:** Security review at Week 6 blocked the launch. The security team identified three risks: (1) Engineers could provision production-grade environments for testing, running up costs ($2,100/environment), (2) No guardrails on environment configurations that included elevated IAM permissions, (3) No audit trail connecting provisioning to approved project work. The CISO's feedback: "Self-service is great, but 'anyone can create anything' is not self-service — it's chaos."
+
+**Decision:** Implemented three-tier approval model. Tier 1 (dev/sandbox): fully self-service, auto-approved, cost-capped at $500/month. Tier 2 (staging/integration): requires team lead approval, auto-approved if within project budget. Tier 3 (production/elevated access): requires director approval + security review, SLA of 4 hours.
+
+**Rationale:** 85% of requests are Tier 1 (truly self-service). Tier 2 adds minimal friction (team lead approval is typically <30 minutes). Tier 3 represents only 5% of requests and these genuinely need oversight. Net result: median provisioning time went from 3-4 days to 6 hours (weighted across tiers), not the <1 hour we originally promised but acceptable.
+
+**Consequences:** Had to rebuild the provisioning workflow to include approval routing (1.5 weeks). Required policy definitions per tier (worked with security to co-author). Needed to add budget tracking per project. But the security team became advocates for the platform instead of blockers. The CISO now demos it to other departments.
+
+**Lesson:** Getting security as a co-designer rather than a gate reviewer turned a blocker into a champion. The tiered model was a better product because it addressed real risks we'd overlooked.
