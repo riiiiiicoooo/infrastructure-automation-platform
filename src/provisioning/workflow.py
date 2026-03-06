@@ -2,6 +2,25 @@
 Provisioning Workflow - Reference Implementation
 Temporal workflow that orchestrates the full environment provisioning lifecycle:
 request validation -> policy check -> approval gate -> Terraform -> Ansible -> CMDB -> compliance scan.
+
+Production Notes (not implemented in this demo):
+- HashiCorp Vault for Credentials: Cloud provider credentials (AWS access keys,
+  Azure service principals, GCP service accounts) must be stored in Vault with
+  dynamic secrets — Vault generates short-lived credentials per provisioning run
+  and auto-revokes them after TTL expiry. Never store static cloud keys in env vars.
+- OPA Policy Enforcement: The policy_check step should evaluate requests against
+  Open Policy Agent (OPA) Rego policies. Policies encode org-level guardrails:
+  max instance sizes, approved regions, required tags, cost thresholds. Deny
+  decisions include human-readable explanations for the requester.
+- Terraform State Encryption: Remote state in S3 must use SSE-KMS with a
+  dedicated KMS key per org. Enable state locking via DynamoDB. The state file
+  contains resource IDs and sometimes secrets — treat it as confidential.
+- Blast Radius Limits: Terraform plan should be analyzed before apply to
+  estimate blast radius (number of resources changed/destroyed). Plans exceeding
+  a threshold (e.g., >10 resources destroyed) require additional approval.
+- Drift Detection: Schedule periodic terraform plan runs (no apply) to detect
+  infrastructure drift. Alert on any planned changes that weren't initiated
+  through the workflow — indicates manual console changes or external mutation.
 """
 
 import json
