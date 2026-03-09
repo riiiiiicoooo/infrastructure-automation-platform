@@ -11,7 +11,7 @@
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        USER LAYER                                       │
 │                                                                         │
-│  ServiceNow Portal          Grafana Dashboards          CLI / API       │
+│  ServiceNow Portal          Datadog Dashboards          CLI / API       │
 │  (request intake,           (health, cost,              (Terraform,     │
 │   approvals)                 compliance, incidents)      Ansible, REST)  │
 └────────────────────────────────┬────────────────────────────────────────┘
@@ -47,7 +47,7 @@
 │ Temporal     │ │ Docker API   │ │ scikit-learn │ │ TimescaleDB          │
 │ Terraform    │ │ Synthetic    │ │ spaCy NLP    │ │ Datadog API          │
 │ Ansible      │ │   workloads  │ │ PagerDuty    │ │ OPA / Rego           │
-│ OPA          │ │ KPI monitor  │ │ Slack        │ │ Grafana              │
+│ OPA          │ │ KPI monitor  │ │ Slack        │ │ Datadog APM          │
 └──────┬───────┘ └──────┬───────┘ └──────┬───────┘ └──────────┬───────────┘
        │                │               │                      │
        ▼                ▼               ▼                      ▼
@@ -505,11 +505,12 @@ Handles metrics collection, anomaly detection, compliance scanning, and reportin
 │  └── Alert generated if anomaly persists > 3 data points│
 │           │                                            │
 │           ▼                                            │
-│  Grafana Dashboards                                    │
+│  Datadog Dashboards (APM + Infrastructure)            │
 │  ├── Infrastructure Health (real-time)                  │
 │  ├── Cost Tracking (daily refresh)                      │
 │  ├── Deployment Velocity (DORA metrics)                 │
 │  ├── Incident Trends (MTTR, volume, auto-resolution)   │
+│  ├── Automatic Service Maps (dependency discovery)      │
 │  └── Compliance Posture (scan results, drift count)     │
 └───────────────────────────────────────────────────────┘
 
@@ -850,7 +851,6 @@ detected -> classified -> remediating -> resolved
 │  │   ├── incident-worker                          │
 │  │   └── compliance-worker                        │
 │  ├── Redis (StatefulSet, 1 primary + 1 replica)   │
-│  └── Grafana (1 replica)                          │
 │                                                   │
 │  Namespace: monitoring                            │
 │  ├── Datadog agent (DaemonSet)                    │

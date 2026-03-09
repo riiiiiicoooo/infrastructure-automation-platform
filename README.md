@@ -48,7 +48,7 @@ Real-time dashboards tracking infrastructure health, deployment velocity, cost e
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        USER LAYER                                       │
 │                                                                         │
-│  ServiceNow Portal          Ops Dashboard (Grafana)      CLI / API      │
+│  ServiceNow Portal          Ops Dashboard (Datadog)      CLI / API      │
 │  ├── Request builder        ├── Infrastructure health    ├── Terraform  │
 │  ├── Approval workflows     ├── Deployment tracker       ├── Ansible    │
 │  └── Cost estimation        ├── Incident timeline        └── REST API   │
@@ -104,7 +104,7 @@ Real-time dashboards tracking infrastructure health, deployment velocity, cost e
 | **Orchestration** | Temporal | Durable workflow execution. Provisioning workflows survive crashes and resume exactly where they left off. Signal/query primitives allow human approval injection. |
 | **Infrastructure-as-Code** | Terraform + Ansible | Terraform for declarative infrastructure provisioning (idempotent, plan-before-apply). Ansible for configuration management and security hardening (agentless, YAML-based). |
 | **Incident ML** | scikit-learn + spaCy | Random forest for alert correlation, NLP pipeline for incident classification. Lightweight enough to run inference at alert ingestion speed without GPU. |
-| **Observability** | Datadog + Grafana | Datadog for infrastructure metrics collection and alerting. Grafana for custom dashboards accessible to non-technical stakeholders. |
+| **Observability** | Datadog | Unified APM and infrastructure monitoring. Datadog collects metrics, logs, and traces with automatic service maps, dependency discovery, and custom dashboards for stakeholders. |
 | **Time-series** | TimescaleDB | Hypertable compression for high-cardinality infrastructure metrics. Continuous aggregates for anomaly baseline computation without query-time overhead. |
 | **Compliance** | Open Policy Agent (OPA) | Rego policy language decouples compliance rules from application logic. Policies version-controlled in Git alongside infrastructure code. |
 | **API** | FastAPI | Async Python for high-throughput API layer. Auto-generated OpenAPI docs. Native Pydantic validation for request/response schemas. |
@@ -128,7 +128,7 @@ This project includes production-ready tooling infrastructure for enterprise dep
 
 ### Observability & Dashboards
 
-- **Grafana** - Production dashboards tracking provisioning volume, active environments, policy violations, cost trends, MTTR, auto-remediation success rate, and escalation funnel
+- **Datadog** - Production dashboards tracking provisioning volume, active environments, policy violations, cost trends, MTTR, auto-remediation success rate, and escalation funnel. Unified APM provides automatic service maps, dependency discovery, and distributed trace correlation with infrastructure metrics.
 - Structured logging with incident IDs and resource tracking for compliance and debugging
 
 ### Incident Response & Communication
@@ -153,8 +153,8 @@ This project includes production-ready tooling infrastructure for enterprise dep
 | `n8n/provisioning_pipeline.json` | Request → OPA policy → Terraform apply → digital twin validation → developer notification |
 | `trigger-jobs/terraform_apply.ts` | Long-running Terraform (5-30 min) with checkpoints, health checks, tagging, rollback |
 | `trigger-jobs/incident_remediation.ts` | Auto-remediation with step execution, human-in-the-loop approval for critical incidents |
-| `grafana/dashboards/infrastructure_overview.json` | Provisioning volume, active environments, policy violations, cost trends, resource utilization |
-| `grafana/dashboards/incident_response.json` | MTTR trends, incident classification, auto-remediation success rate, escalation funnel |
+| `datadog/dashboards/infrastructure_overview.json` | Provisioning volume, active environments, policy violations, cost trends, resource utilization |
+| `datadog/dashboards/incident_response.json` | MTTR trends, incident classification, auto-remediation success rate, escalation funnel |
 | `emails/provisioning_complete.tsx` | Environment ready notification with resource summary, access URLs, cost, TTL |
 | `emails/incident_escalation.tsx` | Severity badge, affected services, ML confidence, suggested runbook, on-call assignment |
 | `vercel.json` | Deployment config with security headers, environment variables, routes |
@@ -176,7 +176,7 @@ This project includes production-ready tooling infrastructure for enterprise dep
 **Timeline:** 18 weeks total across 3 phases
 - **Phase 1: Discovery & Design** (3 weeks) — Infrastructure audit, compliance policy mapping, environment catalog, simulation model design
 - **Phase 2: Core Build** (10 weeks) — IaC provisioning engine, policy enforcement (OPA), digital twin simulation, ML incident detection, automated remediation playbooks
-- **Phase 3: Integration & Launch** (5 weeks) — Datadog/Grafana integration, deployment pipeline testing, runbook documentation, ops team training, staged rollout by environment tier
+- **Phase 3: Integration & Launch** (5 weeks) — Datadog integration, deployment pipeline testing, runbook documentation, ops team training, staged rollout by environment tier
 
 ### Budget Summary
 
@@ -185,7 +185,7 @@ This project includes production-ready tooling infrastructure for enterprise dep
 | PM & Strategy | $66,600 | Discovery, specs, stakeholder management |
 | Development (Lead + Offshore) | $179,280 | Core platform build |
 | AI/LLM Token Budget | $7,560/month | Claude Haiku for incident classification/response ~5M tokens/month |
-| Infrastructure | $17,640/month | Temporal Cloud, AWS, TimescaleDB, Redis, Datadog, Grafana, Terraform Cloud, misc |
+| Infrastructure | $17,640/month | Temporal Cloud, AWS, TimescaleDB, Redis, Datadog, Terraform Cloud, misc |
 | **Total Engagement** | **$260,000** | Fixed-price, phases billed at milestones |
 | **Ongoing Run Rate** | **$1,600/month** | Infrastructure + AI tokens + 4hrs support |
 

@@ -336,3 +336,77 @@ Remediation playbooks define what the incident response system does automaticall
 **Consequences:** Had to rebuild the provisioning workflow to include approval routing (1.5 weeks). Required policy definitions per tier (worked with security to co-author). Needed to add budget tracking per project. But the security team became advocates for the platform instead of blockers. The CISO now demos it to other departments.
 
 **Lesson:** Getting security as a co-designer rather than a gate reviewer turned a blocker into a champion. The tiered model was a better product because it addressed real risks we'd overlooked.
+
+---
+
+## DEC-011: Temporal Workflow Decomposition for Provisioning Performance
+
+**Date:** January 2025
+**Status:** Accepted
+**Decider:** Jacob George (PM), Lead Developer
+
+**Context:**
+Initial production deployment of the provisioning engine used a monolithic Terraform apply approach. A single workflow orchestrated all provisioning steps sequentially: policy validation → Terraform generation → plan review → single apply covering all resources. First production deployment took 47 minutes and timed out, blocking the operations team's morning deployment window.
+
+**The Problem:**
+Sequential Terraform apply across 200+ resources meant the apply step waited for every resource to be created and reach a stable state before moving to the next. Resource dependencies forced ordering (e.g., VPC must exist before subnet, subnet before instance), but independent resources (EC2 instances in different availability zones, RDS in one AZ, ElastiCache in another) were being provisioned sequentially when they could be parallelized. The monolithic approach had no granular error handling — one resource failure invalidated the entire apply, requiring manual rollback investigation.
+
+**Decision:** Decompose the monolithic Terraform apply into a Temporal workflow orchestrating parallel provisioning of independent resource groups with sequential ordering of dependent tiers.
+
+**What Changed:**
+- **Resource dependency analysis:** Parsed Terraform state to build a DAG of resource dependencies (VPC → Subnets → ENIs → Instances, independent parallel paths for RDS, ElastiCache, S3)
+- **Workflow restructuring:** Instead of one `terraform apply` activity, decomposed into multiple activities: `apply_network_tier` (VPC, subnets, ENIs), `apply_compute_tier` (EC2), `apply_data_tier` (RDS, ElastiCache, S3, DynamoDB) running in parallel where possible
+- **Per-tier rollback:** Each tier has its own rollback point. If compute tier fails (e.g., instance launch limit exceeded), the network tier stays intact and can be reused in a retry without full teardown
+- **Granular monitoring:** Each tier reports back progress and resource IDs as they are created, allowing real-time dashboard updates
+
+**Results:**
+- **Deployment time:** 47 minutes → 8 minutes (82% reduction)
+- **Mean time to recovery:** Manual rollback investigation (30 minutes) → Automated per-tier rollback (3 minutes)
+- **Success rate:** First attempt success increased from 78% to 96% because partial failures are automatically recoverable
+- **Observability:** Engineers can now see exactly which tier failed and why, vs. "apply failed, unknown which resource caused it"
+
+**Consequences:**
+- Workflow logic became more complex (DAG parsing, parallel coordination, per-tier error handling)
+- Terraform apply output had to be parsed and structured per tier (1 week of dev time)
+- Required careful testing of dependency ordering to ensure no resource is applied before its dependencies
+- Monitoring dashboard updated to show per-tier progress (network → compute → data provisioning stages)
+
+**Revisit trigger:** If dependency patterns change significantly (e.g., cross-AZ dependencies requiring new ordering), the DAG parsing logic may need adjustment.
+
+---
+
+## DEC-012: Datadog APM + Infrastructure Monitoring Over Grafana-Only Approach
+
+**Date:** February 2025
+**Status:** Accepted (replaces DEC-006 in operational practice)
+**Decider:** Jacob George (PM), Platform Engineering Lead
+
+**Context:**
+Initial deployment used Datadog for metrics collection with Grafana for custom dashboards and TimescaleDB for long-term storage (per DEC-006). After 6 months in production, the team spent significant effort maintaining three separate visualization systems. Datadog had metrics, Grafana had custom dashboards, but trace correlation between application performance and infrastructure changes was manual. When provisioning workflows slowed, operators had to manually cross-reference infrastructure graphs (Grafana), application metrics (Datadog), and traces to understand the root cause.
+
+**The Problem:**
+- **Fragmented observability:** Metrics in Datadog, custom dashboards in Grafana, traces scattered. Correlating infrastructure changes (new resource, security group rule update) with application degradation required manually jumping between systems.
+- **Service map decay:** Datadog's automatic service maps were available but operators defaulted to Grafana for historical data and trend analysis, losing the benefit of auto-discovered dependencies.
+- **Multi-cloud visibility gaps:** Infrastructure is spread across AWS, Azure, and on-prem. Datadog's unified agent covers all environments, but Grafana's custom dashboards required hardcoding environment-specific logic.
+- **Compliance and audit trail:** When an incident occurred, reconstructing "which infrastructure change caused this" meant piecing together logs from multiple systems.
+
+**Decision:** Consolidate on Datadog for unified APM + infrastructure monitoring. Deprecate Grafana dashboards and migrate custom dashboards to Datadog. Retain TimescaleDB as a cold storage archive for compliance-required 7-year metric retention.
+
+**Reasoning:**
+- **Automatic service maps:** Datadog's dependency discovery means zero-maintenance visibility into how provisioning changes cascade through the system. When you create a new service, Datadog sees it automatically. Grafana requires manual dashboard updates.
+- **Unified incident correlation:** Infrastructure metrics, application logs, and distributed traces are all queryable in a single UI. When a deployment slows down, you can see: "Network latency increased 3s ago when this security group rule was modified, and at the same time application CPU increased by 15%." This narrative is impossible to construct across Grafana + Datadog.
+- **Multi-cloud native:** Datadog agents collect metrics consistently across AWS, Azure, and on-prem. One set of dashboards works for all environments. Grafana required environment-specific datasources and manual template variables.
+- **Operational cost:** Instead of managing two observability platforms (Datadog + Grafana + TimescaleDB + Prometheus), consolidate to one. Datadog pricing is metric-based, which scales better than the operational burden of maintaining infrastructure.
+
+**What Stays:**
+- TimescaleDB retained as compliance archive (7-year retention at compressed rates, queryable for audit trails but not for operational dashboards)
+- OPA policies for compliance scanning remain unchanged
+- Anomaly detection logic moves from custom TimescaleDB SQL queries to Datadog's built-in anomaly detection (with similar statistical methods)
+
+**Consequences:**
+- Migration: 3-week effort to rebuild Grafana dashboards in Datadog (mostly copy-paste of query logic with Datadog syntax)
+- Training: Ops team needed 2-hour onboarding to Datadog UI for those who primarily used Grafana
+- Cost: Metrics cost increases from flat $5K/month (Grafana + TimescaleDB) to variable based on metric volume (~$8K/month at current scale)
+- Benefit: ~8 hours/month removed from "dashboard maintenance and integration debugging" per ops engineer, offset by slightly higher third-party dependency
+
+**Revisit trigger:** If metric volume exceeds 100K metrics/month (3-4x current), revisit whether custom long-term storage (TimescaleDB) becomes cost-effective vs. Datadog's tiered storage.
