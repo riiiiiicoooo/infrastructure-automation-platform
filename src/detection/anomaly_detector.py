@@ -11,6 +11,20 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from enum import Enum
 import math
+import uuid
+
+# Import persistence layer (optional - allows graceful degradation if DB unavailable)
+try:
+    from ..db import (
+        save_anomaly_record,
+        get_anomaly_streak,
+        increment_anomaly_streak,
+        reset_anomaly_streak,
+        save_metric_snapshot,
+    )
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
 
 
 class AnomalyLevel(Enum):
@@ -79,10 +93,11 @@ class AnomalyDetector:
     IQR_EXTREME_MULTIPLIER = 3.0
     PERSISTENCE_THRESHOLD = 3     # consecutive anomalous points to alert
 
-    def __init__(self):
+    def __init__(self, persist_to_db: bool = True):
         self.baselines: dict[str, SeasonalBaseline] = {}
         self.recent_values: dict[str, list[MetricPoint]] = defaultdict(list)
         self.anomaly_streak: dict[str, int] = defaultdict(int)
+        self.persist_to_db = persist_to_db and DB_AVAILABLE
 
     def add_baseline(self, baseline: SeasonalBaseline):
         """Load a baseline (from TimescaleDB in production)."""
@@ -148,12 +163,21 @@ class AnomalyDetector:
 
         # Persistence check: only alert if anomaly persists
         streak_key = f"{point.resource_id}:{point.metric_name}"
-        if raw_level == AnomalyLevel.ANOMALY:
-            self.anomaly_streak[streak_key] += 1
-        else:
-            self.anomaly_streak[streak_key] = 0
 
-        persisted = self.anomaly_streak[streak_key]
+        if raw_level == AnomalyLevel.ANOMALY:
+            # Increment anomaly streak (from DB or in-memory)
+            if self.persist_to_db:
+                persisted = increment_anomaly_streak(point.resource_id, point.metric_name)
+            else:
+                self.anomaly_streak[streak_key] += 1
+                persisted = self.anomaly_streak[streak_key]
+        else:
+            # Reset streak when anomaly resolves
+            if self.persist_to_db:
+                reset_anomaly_streak(point.resource_id, point.metric_name)
+            else:
+                self.anomaly_streak[streak_key] = 0
+            persisted = 0
         final_level = (
             AnomalyLevel.ANOMALY
             if persisted >= self.PERSISTENCE_THRESHOLD
@@ -166,7 +190,7 @@ class AnomalyDetector:
             point, baseline, z_score, iqr_status, final_level, persisted,
         )
 
-        return AnomalyDetection(
+        detection = AnomalyDetection(
             resource_id=point.resource_id,
             resource_name=resource_name,
             metric_name=point.metric_name,
@@ -179,6 +203,35 @@ class AnomalyDetector:
             persisted_points=persisted,
             message=message,
         )
+
+        # Persist anomaly record to database (audit trail)
+        if self.persist_to_db and final_level == AnomalyLevel.ANOMALY:
+            try:
+                baseline_key = self._baseline_key(
+                    point.resource_id, point.metric_name,
+                    point.timestamp.hour, point.timestamp.weekday()
+                )
+                save_anomaly_record(
+                    anomaly_id=str(uuid.uuid4()),
+                    resource_id=point.resource_id,
+                    resource_name=resource_name,
+                    metric_name=point.metric_name,
+                    current_value=point.value,
+                    level=final_level.value,
+                    persisted_points=persisted,
+                    baseline_mean=baseline.mean,
+                    baseline_stddev=baseline.stddev,
+                    z_score=z_score,
+                    iqr_status=iqr_status,
+                    message=message,
+                    baseline_key=baseline_key,
+                )
+            except Exception as e:
+                # Log but don't fail: anomaly detection continues
+                import logging
+                logging.warning(f"Failed to persist anomaly record: {e}")
+
+        return detection
 
     def update_baseline_ema(
         self,
